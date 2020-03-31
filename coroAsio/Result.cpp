@@ -10,7 +10,8 @@
 
 
 namespace stde = std::experimental;
-
+std::exception_ptr myEPtr = nullptr;
+std::runtime_error* myRt = nullptr;
 namespace details
 {
     struct DefaultResultExceptionHandler
@@ -18,9 +19,42 @@ namespace details
         template<typename T, typename E>
         std::variant<T, E> unhandled_exception()
         {
+            auto ePtr = std::current_exception();
             //return E{ 1,std::system_category() };
             // rethrow the current exception;
-            throw;
+            if (ePtr)
+            {
+
+                try
+                {
+                    throw ePtr;
+                }
+                catch (std::error_code const& ec)
+                {
+                    std::cout << "ec " << ec.message() << std::endl;
+                    throw;
+                }
+                catch (std::runtime_error & e)
+                {
+                    std::cout << e.what() << '\n';  // or whatever
+
+                }
+                catch (const std::exception & e)
+                {
+                    std::cout << e.what() << '\n';  // or whatever
+                }
+                catch (...)
+                {
+                    // well ok, still unknown what to do now, 
+                    // but a std::exception_ptr doesn't help the situation either.
+                    std::cerr << "unknown exception\n";
+                    throw;
+                }
+
+                std::cout << "eq " << int(myEPtr == ePtr) << std::endl;
+
+            }
+            throw std::exception();
         }
     };
 
@@ -33,6 +67,14 @@ namespace details
         using error_type = std::remove_cvref_t<Error>;
         using exception_handler = std::remove_cvref_t<ExceptionHandler>;
 
+        ~Result()
+        {
+            std::cout << "~Result() " << (long)this << std::endl;
+            if (coroutine_handle)
+                coroutine_handle.destroy();
+        }
+
+#ifdef INLINE_VARIANT
         Result(const typename std::enable_if_t<std::is_copy_constructible<value_type>::value, value_type>& t)
             :mVar(t)
         {
@@ -63,6 +105,64 @@ namespace details
             std::cout << "constructed Result 5 at " << (long)this << " " << *this << std::endl;
         }
 
+        std::variant<value_type, error_type>& var() {
+            std::cout << "var() " << (long)this << std::endl;
+
+            return mVar;
+        };
+        const std::variant<value_type, error_type>& var() const {
+            std::cout << "var() " << (long)this << std::endl;
+
+            return mVar;
+        };
+
+
+#else
+
+        Result(const typename std::enable_if_t<std::is_copy_constructible<value_type>::value, value_type>& t)
+        {
+            *this = [&]()-> Result {co_return t; }();
+            std::cout << "constructed Result 1 at " << (long)this << " " << *this << std::endl;
+        }
+
+        Result(typename std::enable_if_t<std::is_move_constructible<value_type>::value, value_type>&& t)
+        {
+            *this = [&]()-> Result {co_return t; }();
+            std::cout << "constructed Result 2 at " << (long)this << " " << *this << std::endl;
+        }
+
+        Result(const typename std::enable_if_t<std::is_copy_constructible<error_type>::value, error_type>& e)
+        {
+            *this = [&]() -> Result { co_return e; }();
+            std::cout << "constructed Result 3 at " << (long)this << " " << *this << std::endl;
+        }
+
+        Result(typename std::enable_if_t<std::is_move_constructible<error_type>::value, error_type>&& e)
+        {
+            *this = [&]()-> Result {co_return e; }();
+            std::cout << "constructed Result 4 at " << (long)this << " " << *this << std::endl;
+        }
+
+        Result(Result&& r)
+        {
+            var() = r;
+            r.coroutine_handle = {};
+            std::cout << "constructed Result 5 at " << (long)this << " " << *this << std::endl;
+        }
+
+
+        std::variant<value_type, error_type>& var() {
+            std::cout << "var() " << (long)this << std::endl;
+
+            return coroutine_handle.promise().mVar;
+        };
+        const std::variant<value_type, error_type>& var() const {
+            std::cout << "var() " << (long)this << std::endl;
+
+            return coroutine_handle.promise().mVar;
+        };
+
+#endif
 
         Result& operator=(const value_type& v)
         {
@@ -91,16 +191,6 @@ namespace details
             return *this;
         }
 
-
-        std::variant<value_type, error_type>& var() {
-            return mVar;
-        };
-        const std::variant<value_type, error_type>& var() const {
-            return mVar;
-        };
-
-
-
         bool hasValue() const
         {
             return std::holds_alternative<value_type>(var());
@@ -122,6 +212,16 @@ namespace details
         }
 
         const value_type& operator->() const
+        {
+            return unwrap();
+        }
+
+        value_type& operator*()
+        {
+            return unwrap();
+        }
+
+        const value_type& operator*() const
         {
             return unwrap();
         }
@@ -179,6 +279,11 @@ namespace details
 
         template <class Promise>
         struct result_awaiter {
+
+            ~result_awaiter()
+            {
+                std::cout << "~promise_type()" << std::endl;
+            }
             using value_type = typename Promise::result_type::value_type;
             using exception_handler = typename  Promise::result_type::exception_handler;
 
@@ -206,9 +311,14 @@ namespace details
 
         struct promise_type
         {
+            ~promise_type()
+            {
+                std::cout << "~promise_type()" << std::endl;
+            }
+
             using result_type = Result;
 
-            result_type* mRes;
+            //result_type* mRes;
 
             stde::suspend_never initial_suspend() { return {}; }
             stde::suspend_always final_suspend() noexcept { return {}; }
@@ -231,20 +341,9 @@ namespace details
                 var() = errc;
             }
 
-            //typename std::enable_if_t<true, void>
-            //    unhandled_exception() 
-            //{
-            //    throw;
-            //}
-
             void unhandled_exception()
             {
                 var() = ExceptionHandler{}.unhandled_exception<value_type, error_type>();
-            }
-
-            std::variant<value_type, error_type>& var()
-            {
-                return mRes->mVar;
             }
 
             template <class TT, class EX>
@@ -252,17 +351,38 @@ namespace details
                 std::cout << "result_promise::await_transform(Result<TT,E>&&)" << std::endl;
                 return result_awaiter<Result<TT, error_type, EX>::promise_type>(std::move(res));
             }
+#ifdef INLINE_VARIANT
+            std::variant<value_type, error_type>& var()
+            {
+                std::cout << "var() " << (long)mRes << std::endl;
+                return mRes->mVar;
+            }
+            result_type* mRes;
+#else
+            std::variant<value_type, error_type> mVar;
+            std::variant<value_type, error_type>& var()
+            {
+                //std::cout << "var() " << (long)mRes << std::endl;
+                return mVar;
+            }
+#endif
+
         };
 
         using coro_handle = std::experimental::coroutine_handle<promise_type>;
+#ifdef INLINE_VARIANT
         std::variant<value_type, error_type> mVar;
-
-        //coro_handle coroutine_handle;
+#else
+        coro_handle coroutine_handle;
+#endif
 
         Result(coro_handle handle)
         {
+#ifdef INLINE_VARIANT
             handle.promise().mRes = this;
-
+#else
+            coroutine_handle = handle;
+#endif
             std::cout << "constructed Result ** at " << (long)this << " " << *this << std::endl;
 
         }
@@ -342,7 +462,21 @@ Result<long, std::error_code> sum_values(int nb_sum) {
 Result<int, std::error_code> poll_value_ex() {
     if (g_make_empty-- == 0)
     {
-        throw std::runtime_error("exception driven coroutine");
+        try
+        {
+            throw generic_error;
+        }
+        catch (std::runtime_error & rt)
+        {
+            myRt = &rt;
+            myEPtr = std::current_exception();
+            throw;
+        }
+        catch (const std::error_code & ec)
+        {
+            std::cout << "ec" << ec.message() << std::endl;
+            throw;
+        }
     }
     co_return 1;
 }
@@ -364,6 +498,29 @@ void print_opt(const Result<T, E>& r)
 }
 
 int tupleMain() {
+
+    g_make_empty = 0;
+    try
+    {
+        auto i = *poll_value_ex();
+    }
+    catch (const std::runtime_error & rt)
+    {
+
+        std::cout << "eq " << int(myEPtr == std::current_exception()) << std::endl;
+        std::cout << "eq " << int(myRt == &rt) << std::endl;
+
+        std::cout << rt.what() << std::endl;
+    }
+    catch (std::error_code const& ec)
+    {
+        std::cout << "ec " << ec.message() << std::endl;
+        throw;
+    }
+    catch (...)
+    {
+        std::cout << "unhandled exception" << std::endl;
+    }
 
     print_opt(sum_values_ex(5));
     print_opt(sum_values_ex(15));

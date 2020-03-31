@@ -13,6 +13,7 @@ namespace example1
     struct promise
     {
         using coro_handle = std::experimental::coroutine_handle<promise>;
+        std::exception_ptr mEPtr = nullptr;
 
         auto get_return_object() {
             return coro_handle::from_promise(*this);
@@ -21,7 +22,7 @@ namespace example1
         auto final_suspend() noexcept { return std::experimental::suspend_always(); }
         void return_void() {}
         void unhandled_exception() {
-            std::terminate();
+            mEPtr = std::current_exception();
         }
     };
 
@@ -38,14 +39,23 @@ namespace example1
         resumable(resumable&&) = delete;
 
         bool resume() {
+
             if (!handle_.done())
                 handle_.resume();
+
+            if (handle_.promise().mEPtr)
+                std::rethrow_exception(handle_.promise().mEPtr);
+
             return !handle_.done();
         }
         ~resumable() { handle_.destroy(); }
     private:
+
+
         coro_handle handle_;
     };
+
+    std::exception_ptr myEPtr = nullptr;
 
 
     resumable foo() {
@@ -61,6 +71,15 @@ namespace example1
         //    ... handle.resume() called ...
         // }
         // try {
+
+        try {
+            throw std::runtime_error("test");
+        }
+        catch (...)
+        {
+            myEPtr = std::current_exception();
+            throw;
+        }
 
         std::cout << "Hello" << std::endl;
 
@@ -92,7 +111,19 @@ namespace example1
         using namespace example1;
 
         resumable res = foo();
-        while (res.resume());
+        try {
+
+            while (res.resume() == false);
+        }
+        catch (std::runtime_error & rt)
+        {
+            std::cout << rt.what() << ", eq " << int(myEPtr == std::current_exception()) << std::endl;
+        }
+        catch (...)
+        {
+            std::cout << "unhandled exception" << std::endl;            
+        }
+
 
         return 0;
     }
