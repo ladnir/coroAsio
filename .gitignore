@@ -1,7 +1,12 @@
-*.filter
+*/*.filters
 *.user
 *.obj
 *.idb
 *.pdb
 x64/
 .vs/
+
+CMakeFiles/
+CMakeCache.txt
+*.cmake
+Makefile

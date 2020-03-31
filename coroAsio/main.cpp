@@ -2,9 +2,14 @@
 #include "Protocol.h"
 #include "Result.h"
 
+
+
+
+
 int main(int argc, char** argv)
 {
-    example1::main(argc, argv);
+    //example1::main(argc, argv);
+    //tupleMain2();
     tupleMain();
     //protoMain();
     return 0;
