@@ -7,7 +7,7 @@
 namespace stde = std::experimental;
 
 template<typename T, typename Error = std::error_code>
-class Result
+class result
 {
 public:
 
@@ -16,19 +16,19 @@ public:
 
 
     
-    //Result(const typename std::enable_if_t<std::is_copy_constructible<value_type>::value, value_type>& t)
+    //result(const typename std::enable_if_t<std::is_copy_constructible<value_type>::value, value_type>& t)
     //    :mVar(t)
     //{}
 
-    //Result(typename std::enable_if_t<std::is_move_constructible<value_type>::value, value_type>&& t)
+    //result(typename std::enable_if_t<std::is_move_constructible<value_type>::value, value_type>&& t)
     //    :mVar(std::forward<value_type>(t))
     //{}
 
-    //Result(const typename std::enable_if_t<std::is_copy_constructible<error_type>::value, error_type>& t)
+    //result(const typename std::enable_if_t<std::is_copy_constructible<error_type>::value, error_type>& t)
     //    :mVar(t)
     //{}
 
-    //Result(typename std::enable_if_t<std::is_move_constructible<error_type>::value, error_type>&& t)
+    //result(typename std::enable_if_t<std::is_move_constructible<error_type>::value, error_type>&& t)
     //    :mVar(std::forward<error_type>(t))
     //{}
 
@@ -41,24 +41,24 @@ public:
     };
 
 
-    bool hasValue()
+    bool has_value()
     {
         return std::holds_alternative<value_type>(var());
     }
     
-    bool hasError()
+    bool has_error()
     {
-        return !hasValue();
+        return !has_value();
     }
 
     operator bool()
     {
-        return hasError();
+        return has_error();
     }
 
     value_type& unwrap()
     {
-        if (hasError())
+        if (has_error())
             throw std::runtime_error("unwrap() was called on a Result<T,E> which stores an error_type");
 
         return std::get<value_type>(var());
@@ -66,7 +66,7 @@ public:
 
     const value_type& unwrap() const
     {
-        if (hasError())
+        if (has_error())
             throw std::runtime_error("unwrap() was called on a Result<T,E> which stores an error_type");
 
         return std::get<const value_type>(var());
@@ -74,21 +74,21 @@ public:
 
     value_type& unwrapOr(value_type& alt)
     {
-        if (hasError())
+        if (has_error())
             return alt;
         return std::get<value_type>(var());
     }
 
     const value_type& unwrapOr(const value_type& alt) const
     {
-        if (hasError())
+        if (has_error())
             return alt;
         return std::get<const value_type>(var());
     }
 
     error_type& error()
     {
-        if (hasValue())
+        if (has_value())
             throw std::runtime_error("error() was called on a Result<T,E> which stores an value_type");
 
         return std::get<error_type>(var());
@@ -96,7 +96,7 @@ public:
 
     const error_type& error() const
     {
-        if (hasValue())
+        if (has_value())
             throw std::runtime_error("error() was called on a Result<T,E> which stores an value_type");
 
         return std::get<const error_type>(var());
@@ -107,7 +107,7 @@ public:
     {
         std::variant<value_type, error_type> mVar;
 
-        Result get_return_object() {
+        result get_return_object() {
             return stde::coroutine_handle<promise_type>::from_promise(*this);
         }
         stde::suspend_never initial_suspend() { return {}; }
@@ -117,21 +117,21 @@ public:
             if (exceptionPtr)
                 std::rethrow_exception(exceptionPtr);
         }
-        void return_value(Result value) {mVar = value; };
+        void return_value(result value) {mVar = value; };
 
         struct ResultAwaiter {
-            Result mRes;
+            result mRes;
 
-            ResultAwaiter(Result&& res) : mRes(std::move(res)) {}
+            ResultAwaiter(result&& res) : mRes(std::move(res)) {}
 
             bool await_ready() { return true; }
             void await_suspend(stde::coroutine_handle<promise_type> coro_handle) {}
-            Result await_resume() {
+            result await_resume() {
                 return mRes;
             }
         };
 
-        ResultAwaiter await_transform(Result&& s) {
+        ResultAwaiter await_transform(result&& s) {
             return ResultAwaiter(std::move(s));
         }
 
@@ -176,18 +176,18 @@ public:
     //private:
     coro_handle coroutine_handle;
 
-    Result(coro_handle* handle)
+    result(coro_handle* handle)
         : coroutine_handle(handle)
     {}
 };
 
 //
-//inline Result<int> bar()
+//inline result<int> bar()
 //{
 //    co_await 3;
 //}
 //
-//inline Result<int> foo()
+//inline result<int> foo()
 //{
 //    int i = co_await bar();
 //

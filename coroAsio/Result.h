@@ -4,444 +4,355 @@
 #include <variant>
 #include <optional>
 #include <system_error>
-#include <tuple>
-#include <iostream>
-#include <string>
-#include "cppcoro/task.hpp"
-
-#define INLINE_VARIANT 
-#define VERBOSE(x)
-//#define VERBOSE(x) x
 
 namespace ncoro
 {
-    using u64 = unsigned long long;
-    using u32 = unsigned int;
-    using u8 = unsigned char;
-    using i64 = long long;
-    using i32 = int;
-    using i8 = char;
-
-
-    enum class Errc
-    {
-        success = 0,
-        uncaught_exception
-        //CloseChannel = 1 // error indicating we should call the close handler.
-    };
-}
-namespace std {
-    template <>
-    struct is_error_code_enum<ncoro::Errc> : true_type {};
-}
-
-namespace ncoro
-{
-    using error_code = std::error_code;
-
-    error_code make_error_code(Errc e);
-
-
-    class BadResultAccess
-        : public std::exception
-    {
-    public:
-        BadResultAccess(char const* const msg)
-            : std::exception(msg)
-        {
-        }
-    };
 
     namespace stde = std::experimental;
 
     namespace details
     {
-
-
-        template<typename T, typename Error, typename ExceptionHandler>
-        class Result
+        template<typename T, typename E, typename ExceptionHandler>
+        class result
         {
         public:
             using value_type = std::remove_cvref_t<T>;
-            using error_type = std::remove_cvref_t<Error>;
+            using error_type = std::remove_cvref_t<E>;
             using exception_handler = std::remove_cvref_t<ExceptionHandler>;
 
+            result(const value_type& t);
+            result(value_type&& t);
+            result(const error_type& e);
+            result(error_type&& e);
 
-#ifdef INLINE_VARIANT
-            Result(const typename std::enable_if_t<std::is_copy_constructible<value_type>::value, value_type>& t)
-                :mVar(t)
-            {
-                VERBOSE(std::cout << "constructed Result 1 at " << (u64)this << " " << *this << std::endl);
-            }
+            result(const result& r);
+            result(result&& r);
 
-            Result(typename std::enable_if_t<std::is_move_constructible<value_type>::value, value_type>&& t)
-                :mVar(std::forward<value_type>(t))
-            {
-                VERBOSE(std::cout << "constructed Result 2 at " << (u64)this << " " << *this << std::endl);
-            }
+            result& operator=(const value_type& v);
+            result& operator=(value_type&& v);
 
-            Result(const typename std::enable_if_t<std::is_copy_constructible<error_type>::value, error_type>& e)
-                :mVar(e)
-            {
-                VERBOSE(std::cout << "constructed Result 3 at " << (u64)this << " " << *this << std::endl);
-            }
+            result& operator=(const error_type& v);
+            result& operator=(error_type&& v);
 
-            Result(typename std::enable_if_t<std::is_move_constructible<error_type>::value, error_type>&& e)
-                :mVar(std::forward<error_type>(e))
-            {
-                VERBOSE(std::cout << "constructed Result 4 at " << (u64)this << " " << *this << std::endl);
-            }
+            result& operator=(result&& r);
+            result& operator=(result const& r);
 
-            Result(Result&& r)
-            {
-                var() = r.mVar;
-                VERBOSE(std::cout << "constructed Result 5 at " << (u64)this << " " << *this << std::endl);
-            }
+            bool has_value() const;
+            bool has_error() const;
+            operator bool() const;
 
-            std::variant<value_type, error_type>& var() {
-                return mVar;
-            };
-            const std::variant<value_type, error_type>& var() const {
-                return mVar;
-            };
+            value_type& operator->();
+            const value_type& operator->() const;
+            value_type& operator*();
+            const value_type& operator*() const;
 
+            value_type& value();
+            const value_type& value() const;
 
-#else
-            ~Result()
-            {
-                VERBOSE(std::cout << "~Result() " << (u64)this << std::endl);
-                if (coroutine_handle)
-                    coroutine_handle.destroy();
-            }
+            value_type& value_or(value_type& alt);
+            const value_type& value_or(const value_type& alt) const;
 
-            Result(const typename std::enable_if_t<std::is_copy_constructible<value_type>::value, value_type>& t)
-            {
-                *this = [&]()-> Result {co_return t; }();
-                VERBOSE(std::cout << "constructed Result 1 at " << (u64)this << " " << *this << std::endl);
-            }
+            error_type& error();
+            const error_type& error() const;
 
-            Result(typename std::enable_if_t<std::is_move_constructible<value_type>::value, value_type>&& t)
-            {
-                *this = [&]()-> Result {co_return t; }();
-                VERBOSE(std::cout << "constructed Result 2 at " << (u64)this << " " << *this << std::endl);
-            }
+            bool operator==(result const& y) const;
+            bool operator!=(result const& y) const;
+            bool operator==(const value_type&) const;
+            bool operator!=(const value_type&) const;
 
-            Result(const typename std::enable_if_t<std::is_copy_constructible<error_type>::value, error_type>& e)
-            {
-                *this = [&]() -> Result { co_return e; }();
-                VERBOSE(std::cout << "constructed Result 3 at " << (u64)this << " " << *this << std::endl);
-            }
+            friend bool operator==(const value_type&, const result&);
+            friend bool operator!=(const value_type&, const result&);
 
-            Result(typename std::enable_if_t<std::is_move_constructible<error_type>::value, error_type>&& e)
-            {
-                *this = [&]()-> Result {co_return e; }();
-                VERBOSE(std::cout << "constructed Result 4 at " << (u64)this << " " << *this << std::endl);
-            }
-
-            Result(Result&& r)
-            {
-                var() = r;
-                r.coroutine_handle = {};
-                VERBOSE(std::cout << "constructed Result 5 at " << (u64)this << " " << *this << std::endl);
-            }
-
-
-            std::variant<value_type, error_type>& var() {
-                return coroutine_handle.promise().mVar;
-            };
-            const std::variant<value_type, error_type>& var() const {
-                return coroutine_handle.promise().mVar;
-            };
-
-#endif
-
-            Result& operator=(const value_type& v)
-            {
-                var() = v;
-                VERBOSE(std::cout << "assign Result 1 at " << (u64)this << " " << *this << std::endl);
-                return *this;
-            }
-
-
-            Result& operator=(value_type&& v)
-            {
-                var() = std::move(v);
-                VERBOSE(std::cout << "assign Result 2 at " << (u64)this << " " << *this << std::endl);
-                return *this;
-            }
-
-            Result& operator=(Result&& r)
-            {
-                var() = std::move(r.var());
-                return *this;
-            }
-
-            Result& operator=(Result const& r)
-            {
-                var() = r.var();
-                return *this;
-            }
-
-            bool hasValue() const
-            {
-                return std::holds_alternative<value_type>(var());
-            }
-
-            bool hasError() const
-            {
-                return !hasValue();
-            }
-
-            operator bool() const
-            {
-                return hasError();
-            }
-
-            value_type& operator->()
-            {
-                return unwrap();
-            }
-
-            const value_type& operator->() const
-            {
-                return unwrap();
-            }
-
-            value_type& operator*()
-            {
-                return unwrap();
-            }
-
-            const value_type& operator*() const
-            {
-                return unwrap();
-            }
-
-
-            value_type& unwrap()
-            {
-                if (hasError())
-                    exception_handler{}.throwErrorType(error());
-
-                return std::get<value_type>(var());
-            }
-
-            const value_type& unwrap() const
-            {
-                if (hasError())
-                    exception_handler{}.throwErrorType(error());
-
-                return std::get<value_type>(var());
-            }
-
-            value_type& unwrapOr(value_type& alt)
-            {
-                if (hasError())
-                    return alt;
-                return std::get<value_type>(var());
-            }
-
-            const value_type& unwrapOr(const value_type& alt) const
-            {
-                if (hasError())
-                    return alt;
-                return std::get<value_type>(var());
-            }
-
-            error_type& error()
-            {
-                if (hasValue())
-                    throw BadResultAccess("error() was called on a Result<T,E> which stores an value_type");
-
-                return std::get<error_type>(var());
-            }
-
-            const error_type& error() const
-            {
-                if (hasValue())
-                    throw BadResultAccess("error() was called on a Result<T,E> which stores an value_type");
-
-                return std::get<error_type>(var());
-            }
+            bool operator==(const error_type&) const;
+            bool operator!=(const error_type&) const;
+            friend bool operator==(const error_type&, const result&);
+            friend bool operator!=(const error_type&, const result&);
 
 
             struct promise_type;
-
-
             template <class Promise>
             struct result_awaiter {
 
-                ~result_awaiter()
-                {
-                    VERBOSE(std::cout << "~promise_type()" << std::endl);
-                }
                 using value_type = typename Promise::result_type::value_type;
                 using exception_handler = typename  Promise::result_type::exception_handler;
 
-                Result<value_type, error_type, exception_handler>&& res;
+                result<value_type, error_type, exception_handler>&& res;
 
-                result_awaiter(Result<value_type, error_type, exception_handler>&& r)
+                result_awaiter(result<value_type, error_type, exception_handler>&& r)
                     : res(std::move(r))
-                {
-                    VERBOSE(std::cout << "result_awaiter::result_awaiter()" << std::endl);
-                }
+                {}
 
                 value_type&& await_resume() noexcept {
-                    VERBOSE(std::cout << "result_awaiter::await_resume()" << std::endl);
-                    return std::move(res.unwrap());
+                    return std::move(res.value());
                 }
                 bool await_ready() noexcept {
-                    VERBOSE(std::cout << "result_awaiter::await_ready()" << std::endl);
-                    return res.hasValue();
+                    return res.has_value();
                 }
 
                 void await_suspend(std::experimental::coroutine_handle<promise_type> const& handle) noexcept {
-                    VERBOSE(std::cout << "result_awaiter::await_suspend()" << std::endl);
                     handle.promise().var() = res.error();
                 }
             };
 
             struct promise_type
             {
-                ~promise_type()
-                {
-                    VERBOSE(std::cout << "~promise_type()" << std::endl);
-                }
+                using result_type = result;
 
-                using result_type = Result;
-
-
-                stde::suspend_never initial_suspend() {
-
-                    VERBOSE(std::cout << "promise_type::initial_suspend()" << std::endl);
-                    return {};
-                }
-#ifdef INLINE_VARIANT
-                stde::suspend_never final_suspend() noexcept {
-                    VERBOSE(std::cout << "promise_type::final_suspend()" << std::endl);
-                    return {};
-                }
-#else
-                stde::suspend_always final_suspend() noexcept {
-                    VERBOSE(std::cout << "promise_type::final_suspend()" << std::endl);
-                    return {};
-                }
-#endif
-                Result get_return_object()
-                {
-                    VERBOSE(std::cout << "promise_type::get_return_object()" << std::endl);
+                stde::suspend_never initial_suspend() { return {}; }
+                stde::suspend_never final_suspend() noexcept { return {}; }
+                result get_return_object() {
                     return stde::coroutine_handle<promise_type>::from_promise(*this);
                 }
 
-                void return_value(value_type&& value) noexcept {
-                    VERBOSE(std::cout << "result_promise::return_value(T&&)" << std::endl);
-                    var() = std::move(value);
+                void return_value(value_type&& v) noexcept {
+                    var() = std::move(v);
                 }
-                void return_value(value_type const& value) {
-                    VERBOSE(std::cout << "result_promise::return_value(T const&)" << std::endl);
-                    var() = value;
+                void return_value(value_type const& v) {
+                    var() = v;
                 }
-                void return_value(std::error_code errc) noexcept {
-                    VERBOSE(std::cout << "result_promise::return_value(E)" << std::endl);
-                    var() = errc;
+                void return_value(error_type&& e) noexcept {
+                    var() = std::move(e);
+                }
+                void return_value(error_type const& e) noexcept {
+                    var() = e;
                 }
 
-                void unhandled_exception()
-                {
-                    VERBOSE(std::cout << "promise_type::unhandled_exception()" << std::endl);
+                void unhandled_exception() {
                     var() = ExceptionHandler{}.unhandled_exception();
                 }
 
-                template <class TT, class EX>
-                auto await_transform(Result<TT, error_type, EX>&& res) noexcept {
-                    VERBOSE(std::cout << "result_promise::await_transform(Result<TT,E>&&)" << std::endl);
-                    return result_awaiter<Result<TT, error_type, EX>::promise_type>(std::move(res));
+                template <class TT, class H>
+                auto await_transform(result<TT, error_type, H>&& res) noexcept {
+                    return result_awaiter<result<TT, error_type, H>::promise_type>(std::move(res));
                 }
-#ifdef INLINE_VARIANT
                 std::variant<value_type, error_type>& var()
                 {
                     return mRes->mVar;
                 }
+
                 result_type* mRes;
-#else
-                std::variant<value_type, error_type> mVar;
-                std::variant<value_type, error_type>& var()
-                {
-                    return mVar;
-                }
-#endif
             };
 
+        private:
             using coro_handle = std::experimental::coroutine_handle<promise_type>;
-#ifdef INLINE_VARIANT
             std::variant<value_type, error_type> mVar;
-#else
-            coro_handle coroutine_handle;
-#endif
+            std::variant<value_type, error_type>& var() {
+                return mVar;
+            };
+            const std::variant<value_type, error_type>& var() const {
+                return mVar;
+            };
 
-            Result(coro_handle handle)
+            result(coro_handle handle)
             {
-#ifdef INLINE_VARIANT
                 handle.promise().mRes = this;
-#else
-                coroutine_handle = handle;
-#endif
-                VERBOSE(std::cout << "constructed Result ** at " << (u64)this << " " << *this << std::endl);
             }
         };
 
-        template<typename T, typename E, typename EX>
-        std::ostream& operator<<(std::ostream& out, const Result<T, E, EX>& r)
-        {
-            if (r.hasValue())
-                out << "{" << r.unwrap() << "}";
-            else
-                out << "<" << r.error().message() << ">" << std::endl;
-            return out;
+        template<typename T, typename E, typename H>
+        result<T, E, H>::result(const value_type& t)
+            :mVar(t)
+        {}
+        template<typename T, typename E, typename H>
+        result<T, E, H>::result(value_type&& t)
+            : mVar(std::forward<value_type>(t))
+        {}
+        template<typename T, typename E, typename H>
+        result<T, E, H>::result(const error_type& e)
+            : mVar(e)
+        {}
+        template<typename T, typename E, typename H>
+        result<T, E, H>::result(error_type&& e)
+            : mVar(std::forward<error_type>(e))
+        {}
+        template<typename T, typename E, typename H>
+        result<T, E, H>::result(result const& r)
+            : mVar(r.mVar)
+        {}
+        template<typename T, typename E, typename H>
+        result<T, E, H>::result(result&& r)
+            : mVar(std::move(r.mVar))
+        {}
+
+        template<typename T, typename E, typename H>
+        result<T, E, H>& result<T, E, H>::operator=(const value_type& v) { var() = v; return *this; }
+        template<typename T, typename E, typename H>
+        result<T, E, H>& result<T, E, H>::operator=(value_type&& v) { var() = std::move(v); return *this; }
+        template<typename T, typename E, typename H>
+        result<T, E, H>& result<T, E, H>::operator=(const error_type& v) { var() = v; return *this; }
+        template<typename T, typename E, typename H>
+        result<T, E, H>& result<T, E, H>::operator=(error_type&& v) { var() = std::move(v); return *this; }
+        template<typename T, typename E, typename H>
+        result<T, E, H>& result<T, E, H>::operator=(result&& r) { var() = std::move(r.var()); return *this; }
+        template<typename T, typename E, typename H>
+        result<T, E, H>& result<T, E, H>::operator=(result const& r) { var() = r.var(); return *this; }
+
+        template<typename T, typename E, typename H>
+        bool result<T, E, H>::has_value() const { return std::holds_alternative<value_type>(var()); }
+        template<typename T, typename E, typename H>
+        bool result<T, E, H>::has_error() const { return !has_value(); }
+        template<typename T, typename E, typename H>
+        result<T, E, H>::operator bool() const { return has_value(); }
+
+        template<typename T, typename E, typename H>
+        typename result<T, E, H>::value_type& result<T, E, H>::operator->() { return value(); }
+        template<typename T, typename E, typename H>
+        const typename result<T, E, H>::value_type& result<T, E, H>::operator->() const { return value(); }
+        template<typename T, typename E, typename H>
+        typename  result<T, E, H>::value_type& result<T, E, H>::operator*() { return value(); }
+        template<typename T, typename E, typename H>
+        const typename result<T, E, H>::value_type& result<T, E, H>::operator*() const { return value(); }
+
+        template<typename T, typename E, typename H>
+        typename result<T, E, H>::value_type& result<T, E, H>::value() {
+            if (has_error())
+                exception_handler{}.throwErrorType(error());
+            return std::get<value_type>(var());
         }
+        template<typename T, typename E, typename H>
+        const typename result<T, E, H>::value_type& result<T, E, H>::value() const {
+            if (has_error())
+                exception_handler{}.throwErrorType(error());
+            return std::get<value_type>(var());
+        }
+
+        template<typename T, typename E, typename H>
+        typename result<T, E, H>::value_type& result<T, E, H>::value_or(value_type& alt) {
+            if (has_error())
+                return alt;
+            return std::get<value_type>(var());
+        }
+        template<typename T, typename E, typename H>
+        const typename result<T, E, H>::value_type& result<T, E, H>::value_or(const value_type& alt) const {
+            if (has_error())
+                return alt;
+            return std::get<value_type>(var());
+        }
+
+        class bad_result_access
+            : public std::exception
+        {
+        public:
+            bad_result_access(char const* const msg)
+                : std::exception(msg)
+            { }
+        };
+
+        template<typename T, typename E, typename H>
+        typename result<T, E, H>::error_type& result<T, E, H>::error() {
+            if (has_value())
+                throw bad_result_access("error() was called on a Result<T,E> which stores an value_type");
+
+            return std::get<error_type>(var());
+        }
+        template<typename T, typename E, typename H>
+        const typename result<T, E, H>::error_type& result<T, E, H>::error() const {
+            if (has_value())
+                throw bad_result_access("error() was called on a Result<T,E> which stores an value_type");
+
+            return std::get<error_type>(var());
+        }
+
+        template<typename T, typename E, typename H>
+        bool result<T, E, H>::operator==(result const& y) const {
+            return var() == y.var();
+        }
+        template<typename T, typename E, typename H>
+        bool result<T, E, H>::operator!=(result const& y) const {
+            return var() != y.var();
+        }
+        template<typename T, typename E, typename H>
+        bool result<T, E, H>::operator==(const value_type& v) const {
+            return var() == v;
+        }
+        template<typename T, typename E, typename H>
+        bool result<T, E, H>::operator!=(const value_type& v) const {
+            return var() != v;
+        }
+        template<typename T, typename E, typename H>
+        bool operator==(const T& v, const result<T, E, H>& r) {
+            return r.var() == v;
+        }
+        template<typename T, typename E, typename H>
+        bool operator!=(const T& v, const result<T, E, H>& r) {
+            return r.var() != v;
+        }
+        template<typename T, typename E, typename H>
+        bool result<T, E, H>::operator==(const error_type& v) const {
+            return var() == v;
+        }
+        template<typename T, typename E, typename H>
+        bool result<T, E, H>::operator!=(const error_type& v) const {
+            return var() != v;
+        }
+        template<typename T, typename E, typename H>
+        bool operator==(const E& v, const result<T, E, H>& r) {
+            return r.var() == v;
+        }
+        template<typename T, typename E, typename H>
+        bool operator!=(const E& v, const result<T, E, H>& r) {
+            return r.var() != v;
+        }
+
+        //template<typename T, typename E, typename EX>
+        //std::ostream& operator<<(std::ostream& out, const result<T, E, EX>& r) {
+        //    if (r.has_value())
+        //        out << "{" << r.value() << "}";
+        //    else
+        //        out << "<" << r.error().message() << ">" << std::endl;
+        //    return out;
+        //}
     }
 
+    enum class Errc
+    {
+        success = 0,
+        uncaught_exception
+    };
+    using error_code = std::error_code;
+    error_code make_error_code(Errc e);
+}
+
+namespace std {
+    template <>
+    struct is_error_code_enum<ncoro::Errc> : true_type {};
+}
+
+namespace ncoro {
     template<typename T, typename E>
     struct RethrowExceptionHandler
     {
-        std::variant<T, E> unhandled_exception()
-        {
+        std::variant<T, E> unhandled_exception() {
             throw;
         }
 
-        void throwErrorType(E& e)
-        {
+        void throwErrorType(E& e) {
             throw e;
         }
     };
 
-
     template<typename T, typename E>
-    struct NothrowExceptionHandler;
+    class NothrowExceptionHandler;
 
     template<typename T>
     class NothrowExceptionHandler<T, std::error_code>
     {
     public:
-        std::variant<T, std::error_code> unhandled_exception()
-        {
-            try 
-            {
+        std::variant<T, std::error_code> unhandled_exception() {
+            try {
                 throw;
             }
-            catch (std::error_code e)
-            {
+            catch (std::error_code e) {
                 return e;
             }
-            catch (...)
-            {
+            catch (...) {
                 return Errc::uncaught_exception;
             }
+
             std::terminate();
         }
 
-        void throwErrorType(std::error_code e)
-        {
+        void throwErrorType(std::error_code e) {
             throw e;
         }
     };
@@ -450,13 +361,11 @@ namespace ncoro
     class NothrowExceptionHandler<T, std::exception_ptr>
     {
     public:
-        std::variant<T, std::exception_ptr> unhandled_exception()
-        {
+        std::variant<T, std::exception_ptr> unhandled_exception() {
             return std::current_exception();
         }
 
-        void throwErrorType(std::exception_ptr e)
-        {
+        void throwErrorType(std::exception_ptr e) {
             std::rethrow_exception(e);
         }
     };
@@ -466,33 +375,26 @@ namespace ncoro
     class NothrowExceptionHandler
     {
     public:
-        std::variant<T, E> unhandled_exception()
-        {
+        std::variant<T, E> unhandled_exception() {
             try {
                 throw;
             }
-            catch (E & e)
-            {
+            catch (E & e) {
                 return e;
             }
-            catch (...)
-            {
+            catch (...) {
                 return E{};
             }
             std::terminate();
         }
 
-        void throwErrorType(E const& e)
-        {
+        void throwErrorType(E const& e) {
             throw e;
         }
     };
 
     template<typename T, typename Error = std::error_code, typename ExceptionHandler = NothrowExceptionHandler<T, Error>>
-    using Result = details::Result<T, Error, ExceptionHandler>;
-
+    using result = details::result<T, Error, ExceptionHandler>;
 }
 
-
 int tupleMain();
-//int tupleMain2();

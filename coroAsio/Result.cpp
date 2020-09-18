@@ -1,5 +1,5 @@
 #include "Result.h"
-
+#include <iostream>
 
 namespace { // anonymous namespace
 
@@ -16,10 +16,8 @@ namespace { // anonymous namespace
             {
             case ncoro::Errc::success:
                 return "Success";
-
-                // case osuCrypto::Errc::CloseChannel:
-                //     return "the channel should be closed.";
-
+            case ncoro::Errc::uncaught_exception:
+                return "an uncaught exception that was converted to std::error_code by Result<T,...>";
             default:
                 return "(unrecognized error)";
             }
@@ -27,7 +25,6 @@ namespace { // anonymous namespace
     };
 
     const ncoroErrCategory theNcoroCategory{};
-
 } // anonymous namespace
 
 namespace ncoro
@@ -36,42 +33,44 @@ namespace ncoro
     {
         return { static_cast<int>(e), theNcoroCategory };
     }
-
 }
 
+// An std::error_code based expected/result type which catches
+// all exceptions via coroutines.
 template<typename T>
-using Result = ncoro::Result<T>;
+using result = ncoro::result<T, std::error_code, ncoro::NothrowExceptionHandler<T, std::error_code>>;
 
-
+// An std::exception_ptr based expected/result type which catches
+// all exceptions via coroutines. Execeptions are stored internally
+// and can be rethrown later.
 template<typename T>
-using ResultE = ncoro::Result<T, std::exception_ptr, ncoro::NothrowExceptionHandler<T,std::exception_ptr>>;
-// User code
+using result_e = ncoro::result<T, std::exception_ptr, ncoro::NothrowExceptionHandler<T,std::exception_ptr>>;
+
 
 int g_make_empty = 10;
-
 const auto generic_error = std::error_code{ 1, std::system_category() };
 
 // Classic style
-
-Result<int> old_poll_value() {
-    if (g_make_empty-- == 0) return { generic_error };
-    return { 1 };
+result<int> poll_value_old() {
+    if (g_make_empty-- == 0) 
+        return generic_error;
+    return 1;
 }
 
-Result<long> old_sum_values(int nb_sum) {
+result<long> sum_values_old(int nb_sum) {
 
     int sum = 0;
     while (nb_sum-- > 0) {
-        auto res = old_poll_value();
-        if (res) return res.error();
-        sum += res.unwrap();
+        auto res = poll_value_old();
+        if (res) 
+            return res.error();
+        sum += *res;
     }
-    return { sum };
+    return sum;
 }
 
 // Coro style
-
-Result<int> poll_value() {
+result<int> poll_value_co() {
     if (g_make_empty-- == 0)
     {
         co_return generic_error;
@@ -79,36 +78,41 @@ Result<int> poll_value() {
     co_return 1;
 }
 
-Result<long> sum_values(int nb_sum) {
+result<long> sum_values_co(int nb_sum) {
 
     int sum = 0;
     while (nb_sum-- > 0) {
-        sum += co_await poll_value();
+        sum += co_await poll_value_co();
     }
     co_return sum;
 }
 
 // exception based coro
-Result<int> poll_value_ex() {
+result<int> poll_value_ex() {
     if (g_make_empty-- == 0)
     {
+        // effectively co_return generic_error
         throw generic_error;
+
+        // effectively co_return ncoro::Errc::unchaught_exception;
+        throw std::exception();
     }
     co_return 1;
 }
 
-Result<long> sum_values_ex(int nb_sum) {
+result<long> sum_values_ex(int nb_sum) {
 
     int sum = 0;
-    while (nb_sum-- > 0) {
-        sum += poll_value_ex().unwrap();
+    while (nb_sum-- > 0) 
+    {
+        // effectively co_await poll_value_ex(); 
+        sum += *poll_value_ex();
     }
     co_return sum;
 }
 
-
-// exception based coro
-ResultE<int> poll_value_ex2() {
+// lossless exception based coro
+result_e<int> poll_value_ex2() {
     if (g_make_empty-- == 0)
     {
         throw std::runtime_error("test rt");
@@ -116,15 +120,14 @@ ResultE<int> poll_value_ex2() {
     co_return 1;
 }
 
-ResultE<long> sum_values_ex2(int nb_sum) {
+result_e<long> sum_values_ex2(int nb_sum) {
 
     int sum = 0;
     while (nb_sum-- > 0) {
-        sum += poll_value_ex().unwrap();
+        sum += poll_value_ex().value();
     }
     co_return sum;
 }
-
 
 template<typename R>
 void print_opt(const R& r)
@@ -134,30 +137,18 @@ void print_opt(const R& r)
 
 int tupleMain() {
 
-    g_make_empty = 0;
-    try {
-        auto i = *poll_value_ex2();
-    }
-    catch (std::error_code const& e)
-    {
-        std::cout << "my ec catch " << e.message() << std::endl;
-    }
-    catch (std::runtime_error const&e)
-    {
-        std::cout << "my rt catch " << e.what() << std::endl;
-    }
-    catch (std::exception const& e)
-    {
-        std::cout << "my ex catch: " << e.what() << std::endl;
-    }
-    catch (...)
-    {
-        std::cout << "my unknown catch " << std::endl;
-    }
-
     g_make_empty = 10;
-
+    print_opt(sum_values_old(5));
+    print_opt(sum_values_old(15));
+    g_make_empty = 10;
+    print_opt(sum_values_co(5));
+    print_opt(sum_values_co(15));
+    g_make_empty = 10;
     print_opt(sum_values_ex(5));
     print_opt(sum_values_ex(15));
+    g_make_empty = 10;
+    print_opt(sum_values_ex2(5));
+    print_opt(sum_values_ex2(15));
     return 0;
 }
+

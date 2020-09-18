@@ -19,7 +19,7 @@ namespace example4
 
     namespace stde = std::experimental;
 
-    template <typename Signal, typename Result> class StateMachine {
+    template <typename Signal, typename result> class StateMachine {
     public:
 
 
@@ -27,7 +27,7 @@ namespace example4
 
         struct promise_type {
             std::optional<Signal> recent_signal;
-            std::optional<Result> returned_value;
+            std::optional<result> returned_value;
             StateMachine get_return_object() {
                 return stde::coroutine_handle<promise_type>::from_promise(*this);
             }
@@ -38,7 +38,7 @@ namespace example4
                 if (exceptionPtr)
                     std::rethrow_exception(exceptionPtr);
             }
-            void return_value(Result value) { returned_value.emplace(value); };
+            void return_value(result value) { returned_value.emplace(value); };
             
             struct SignalAwaiter {
                 std::optional<Signal>& recent_signal;
@@ -73,7 +73,7 @@ namespace example4
                 coroutine_handle.resume();
         }
         
-        std::optional<Result> get_result() {
+        std::optional<result> get_result() {
             return coroutine_handle.promise().returned_value;
         }
 

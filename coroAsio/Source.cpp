@@ -1,4 +1,4 @@
-//#include "Result.h"
+//#include "result.h"
 //#include <experimental/coroutine>
 //#include <variant>
 //#include <optional>
@@ -14,48 +14,48 @@
 //namespace details2
 //{
 //
-//    class Result
+//    class result
 //    {
 //    public:
 //        using value_type = int;
 //        using error_type = std::error_code;
 //
-//        ~Result()
+//        ~result()
 //        {
-//            std::cout << "~Result() " << (u64)this << std::endl;
+//            std::cout << "~result() " << (u64)this << std::endl;
 //            if (coroutine_handle)
 //                coroutine_handle.destroy();
 //        }
 //
 //#ifdef INLINE_VARIANT
-//        Result(const typename std::enable_if_t<std::is_copy_constructible<value_type>::value, value_type>& t)
+//        result(const typename std::enable_if_t<std::is_copy_constructible<value_type>::value, value_type>& t)
 //            :mVar(t)
 //        {
-//            std::cout << "constructed Result 1 at " << (u64)this << " " << *this << std::endl;
+//            std::cout << "constructed result 1 at " << (u64)this << " " << *this << std::endl;
 //        }
 //
-//        Result(typename std::enable_if_t<std::is_move_constructible<value_type>::value, value_type>&& t)
+//        result(typename std::enable_if_t<std::is_move_constructible<value_type>::value, value_type>&& t)
 //            :mVar(std::forward<value_type>(t))
 //        {
-//            std::cout << "constructed Result 2 at " << (u64)this << " " << *this << std::endl;
+//            std::cout << "constructed result 2 at " << (u64)this << " " << *this << std::endl;
 //        }
 //
-//        Result(const typename std::enable_if_t<std::is_copy_constructible<error_type>::value, error_type>& e)
+//        result(const typename std::enable_if_t<std::is_copy_constructible<error_type>::value, error_type>& e)
 //            :mVar(e)
 //        {
-//            std::cout << "constructed Result 3 at " << (u64)this << " " << *this << std::endl;
+//            std::cout << "constructed result 3 at " << (u64)this << " " << *this << std::endl;
 //        }
 //
-//        Result(typename std::enable_if_t<std::is_move_constructible<error_type>::value, error_type>&& e)
+//        result(typename std::enable_if_t<std::is_move_constructible<error_type>::value, error_type>&& e)
 //            :mVar(std::forward<error_type>(e))
 //        {
-//            std::cout << "constructed Result 4 at " << (u64)this << " " << *this << std::endl;
+//            std::cout << "constructed result 4 at " << (u64)this << " " << *this << std::endl;
 //        }
 //
-//        Result(Result&& r)
+//        result(result&& r)
 //        {
 //            var() = r.mVar;
-//            std::cout << "constructed Result 5 at " << (u64)this << " " << *this << std::endl;
+//            std::cout << "constructed result 5 at " << (u64)this << " " << *this << std::endl;
 //        }
 //
 //        std::variant<value_type, error_type>& var() {
@@ -68,68 +68,68 @@
 //
 //#else
 //
-//        Result(value_type const& t)
+//        result(value_type const& t)
 //        {
-//            *this = [&]()-> Result {co_return t; }();
-//            std::cout << "constructed Result 1 at " << (u64)this << " " << *this << std::endl;
+//            *this = [&]()-> result {co_return t; }();
+//            std::cout << "constructed result 1 at " << (u64)this << " " << *this << std::endl;
 //        }
 //
-//        Result(const error_type& e)
+//        result(const error_type& e)
 //        {
-//            *this = [&]() -> Result { co_return e; }();
-//            std::cout << "constructed Result 3 at " << (u64)this << " " << *this << std::endl;
+//            *this = [&]() -> result { co_return e; }();
+//            std::cout << "constructed result 3 at " << (u64)this << " " << *this << std::endl;
 //        }
 //
-//        Result(Result&& r)
+//        result(result&& r)
 //        {
 //            coroutine_handle = r.coroutine_handle;
 //            r.coroutine_handle = {};
-//            std::cout << "constructed Result 5 at " << (long)this << " " << *this << std::endl;
+//            std::cout << "constructed result 5 at " << (long)this << " " << *this << std::endl;
 //        }
 //
 //#endif
 //
-//        //Result& operator=(const value_type& v)
+//        //result& operator=(const value_type& v)
 //        //{
 //        //    var() = v;
-//        //    std::cout << "assign Result 1 at " << (long)this << " " << *this << std::endl;
+//        //    std::cout << "assign result 1 at " << (long)this << " " << *this << std::endl;
 //        //    return *this;
 //        //}
 //
 //
-//        //Result& operator=(value_type&& v)
+//        //result& operator=(value_type&& v)
 //        //{
 //        //    var() = std::move(v);
-//        //    std::cout << "assign Result 2 at " << (long)this << " " << *this << std::endl;
+//        //    std::cout << "assign result 2 at " << (long)this << " " << *this << std::endl;
 //        //    return *this;
 //        //}
 //
-//        Result& operator=(Result&& r)
+//        result& operator=(result&& r)
 //        {
 //            coroutine_handle = r.coroutine_handle;
 //            r.coroutine_handle = nullptr;
 //            return *this;
 //        }
 //
-//        //Result& operator=(Result const& r)
+//        //result& operator=(result const& r)
 //        //{
 //        //    var() = r.var();
 //        //    return *this;
 //        //}
 //
-//        bool hasValue() const
+//        bool has_value() const
 //        {
 //            return true;
 //        }
 //
-//        bool hasError() const
+//        bool has_error() const
 //        {
-//            return !hasValue();
+//            return !has_value();
 //        }
 //
 //        operator bool() const
 //        {
-//            return hasError();
+//            return has_error();
 //        }
 //
 //        value_type& operator->()
@@ -155,32 +155,32 @@
 //
 //        value_type& unwrap()
 //        {
-//            if (hasError())
-//                throw BadResultAccess("unwrap() was called on a Result<T,E> which stores an error_type");
+//            if (has_error())
+//                throw bad_result_access("unwrap() was called on a result<T,E> which stores an error_type");
 //
 //            return *new value_type{};
 //        }
 //
 //        const value_type& unwrap() const
 //        {
-//            if (hasError())
-//                throw BadResultAccess("unwrap() was called on a Result<T,E> which stores an error_type");
+//            if (has_error())
+//                throw bad_result_access("unwrap() was called on a result<T,E> which stores an error_type");
 //
 //            return *new value_type{};
 //        }
 //
 //        error_type& error()
 //        {
-//            if (hasValue())
-//                throw BadResultAccess("error() was called on a Result<T,E> which stores an value_type");
+//            if (has_value())
+//                throw bad_result_access("error() was called on a result<T,E> which stores an value_type");
 //
 //            return *new error_type{};
 //        }
 //
 //        const error_type& error() const
 //        {
-//            if (hasValue())
-//                throw std::runtime_error("error() was called on a Result<T,E> which stores an value_type");
+//            if (has_value())
+//                throw std::runtime_error("error() was called on a result<T,E> which stores an value_type");
 //
 //            return *new error_type{};
 //        }
@@ -224,7 +224,7 @@
 //                std::cout << "~promise_type()" << std::endl;
 //            }
 //
-//            using result_type = Result;
+//            using result_type = result;
 //
 //            //result_type* mRes;
 //
@@ -238,7 +238,7 @@
 //                return {};
 //            }
 //
-//            Result get_return_object()
+//            result get_return_object()
 //            {
 //                std::cout << "promise_type::get_return_object()" << std::endl;
 //                return stde::coroutine_handle<promise_type>::from_promise(*this);
@@ -295,19 +295,19 @@
 //            }
 //
 //
-//            auto await_transform(Result&& res) noexcept {
-//                std::cout << "result_promise::await_transform(Result<TT,E>&&)" << std::endl;
-//                return result_awaiter<Result::promise_type>();
+//            auto await_transform(result&& res) noexcept {
+//                std::cout << "result_promise::await_transform(result<TT,E>&&)" << std::endl;
+//                return result_awaiter<result::promise_type>();
 //            }
 //        };
 //
 //        using coro_handle = std::experimental::coroutine_handle<promise_type>;
 //        coro_handle coroutine_handle;
 //
-//        Result(coro_handle handle)
+//        result(coro_handle handle)
 //        {
 //            coroutine_handle = handle;
-//            std::cout << "constructed Result ** at " << (long)this << " " << *this << std::endl;
+//            std::cout << "constructed result ** at " << (long)this << " " << *this << std::endl;
 //
 //        }
 //
@@ -316,7 +316,7 @@
 //}
 //
 //
-//using Result = details2::Result;
+//using result = details2::result;
 //
 //// User code
 //
@@ -327,7 +327,7 @@
 //// Classic style
 //
 //// exception based coro
-//Result poll_value_ex() {
+//result poll_value_ex() {
 //    if (g_make_empty2-- == 0)
 //    {
 //        try
@@ -348,7 +348,7 @@
 //    co_return 1;
 //}
 //
-//Result sum_values_ex(int nb_sum) {
+//result sum_values_ex(int nb_sum) {
 //
 //    int sum = 0;
 //    while (nb_sum-- > 0) {
@@ -358,7 +358,7 @@
 //}
 //
 //
-//void print_opt(const Result& r)
+//void print_opt(const result& r)
 //{
 //    std::cout << "res = " << (r ? r.error().message() : std::to_string(r.unwrap())) << '\n';
 //}

@@ -8,9 +8,10 @@
 
 int main(int argc, char** argv)
 {
+    protoMain();
     //example1::main(argc, argv);
     //tupleMain2();
-    tupleMain();
+    //tupleMain();
     //protoMain();
     return 0;
 
